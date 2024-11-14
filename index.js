@@ -35,20 +35,23 @@ async function transcribeAudio(inputPath) {
   }
 }
 
-async function summarizeText(text) {
+async function generateFlashcardFromText(text) {
   try {
-    const summary = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+    const promptTemplate = fs.readFileSync(path.join(__dirname, 'flashcard-prompt.txt'), 'utf8');
+    
+    const flashcardResponse = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: "Please provide a concise summary of the following text."
+          content: promptTemplate
         },
         {
           role: "user",
           content: text
         }
       ],
+      response_format: { type: "json_object" }  // Add structured output
     });
 
     // Create output directory if it doesn't exist
@@ -61,31 +64,57 @@ async function summarizeText(text) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5); // Format: YYYY-MM-DDTHH-mm-ss
 
     // Save summary with timestamp
-    const summaryPath = path.join(outputDir, `summary_${timestamp}.txt`);
-    fs.writeFileSync(summaryPath, summary.choices[0].message.content);
-    console.log('Summary saved to:', summaryPath);
+    const flashcardPath = path.join(outputDir, `flashcard_${timestamp}.txt`);
+    fs.writeFileSync(flashcardPath, flashcardResponse.choices[0].message.content);
+    console.log('Flashcard saved to:', flashcardPath);
 
-    return summary.choices[0].message.content;
+    return flashcardResponse.choices[0].message.content;
   } catch (error) {
-    console.error('Error in summarization:', error);
+    console.error('Error in flashcard generation:', error);
     throw error;
   }
 }
 
-async function processAudioFile(inputPath) {
+async function generateFlashcards(transcriptionText) {
   try {
-    console.log('Starting transcription...');
-    const transcription = await transcribeAudio(inputPath);
-    
-    console.log('Starting summarization...');
-    await summarizeText(transcription);
-    
-    console.log('Process completed successfully!');
+    console.log('Starting flashcard generation...');
+    const flashcards = await generateFlashcardFromText(transcriptionText);
+    console.log('Flashcard generation completed successfully!');
+    return flashcards;
   } catch (error) {
-    console.error('Error processing audio file:', error);
+    console.error('Error generating flashcards:', error);
+    throw error;
   }
 }
 
-// Example usage
-const inputFile = path.join(__dirname, 'media', 'test.m4a');
-processAudioFile(inputFile);
+// =============================================
+// STEP 1: Generate Transcript
+// =============================================
+// const inputFile = path.join(__dirname, 'media', 'test.m4a');
+// generateTranscript(inputFile)
+//   .then(transcript => {
+//     console.log('Transcript generated successfully');
+//   })
+//   .catch(error => console.error('Transcription error:', error));
+
+// =============================================
+// STEP 2: Generate Flashcards
+// =============================================
+const outputDir = path.join(__dirname, 'output');
+// Get the latest transcription file
+const files = fs.readdirSync(outputDir)
+  .filter(file => file.startsWith('transcription_'))
+  .sort()
+  .reverse();
+
+if (files.length === 0) {
+  console.error('No transcription files found');
+  process.exit(1);
+}
+
+const latestTranscription = fs.readFileSync(path.join(outputDir, files[0]), 'utf8');
+generateFlashcards(latestTranscription)
+  .then(flashcards => {
+    console.log('Flashcards generated successfully');
+  })
+  .catch(error => console.error('Flashcard generation error:', error));
